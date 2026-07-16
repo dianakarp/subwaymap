@@ -29,13 +29,15 @@
     user-select: none;
   }
   #viewport.dragging { cursor: grabbing; }
-  #map {
+  #world {
     position: absolute;
     top: 0;
     left: 0;
     transform-origin: 0 0;
     will-change: transform;
-    image-rendering: auto;
+  }
+  #world img {
+    position: absolute;
     -webkit-user-drag: none;
     pointer-events: none;
   }
@@ -53,29 +55,99 @@
 <body>
 <div id="loading">Loading map…</div>
 <div id="viewport">
-  <img id="map" src="map.png" alt="NYC Subway map" draggable="false">
+  <div id="world">
+    <img id="base" src="base.png" alt="NYC Subway map" draggable="false">
+  </div>
 </div>
 <script>
 (function () {
+  const WORLD_W = 8000, WORLD_H = 9739;
+  const TILE = 1024;
+  const LEVELS = [
+    { z: 1, w: 4000, h: 4870, s: 0.5 },
+    { z: 2, w: 8000, h: 9739, s: 1 }
+  ];
+
   const viewport = document.getElementById('viewport');
-  const map = document.getElementById('map');
+  const world = document.getElementById('world');
+  const base = document.getElementById('base');
   const loading = document.getElementById('loading');
+
+  base.style.left = '0px';
+  base.style.top = '0px';
+  base.style.width = WORLD_W + 'px';
+  base.style.height = WORLD_H + 'px';
 
   let scale = 1, tx = 0, ty = 0;
   let fitScale = 1, maxScale = 4;
-  let imgW = 0, imgH = 0;
 
   const pointers = new Map();
   let lastTapTime = 0, lastTapX = 0, lastTapY = 0;
 
+  const tiles = new Map();
+  let tileTimer = 0;
+
+  function pickLevel() {
+    const need = scale * (window.devicePixelRatio || 1) * WORLD_W;
+    if (need <= 2600) return null;
+    if (need <= 5200) return LEVELS[0];
+    return LEVELS[1];
+  }
+
+  function updateTiles() {
+    const lev = pickLevel();
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    const mx = vw * 0.3, my = vh * 0.3;
+    const x0 = (-tx - mx) / scale, y0 = (-ty - my) / scale;
+    const x1 = (-tx + vw + mx) / scale, y1 = (-ty + vh + my) / scale;
+
+    if (lev) {
+      const tw = TILE / lev.s;
+      const cols = Math.ceil(lev.w / TILE), rows = Math.ceil(lev.h / TILE);
+      const cx0 = Math.max(0, Math.floor(x0 / tw)), cy0 = Math.max(0, Math.floor(y0 / tw));
+      const cx1 = Math.min(cols - 1, Math.floor(x1 / tw)), cy1 = Math.min(rows - 1, Math.floor(y1 / tw));
+      for (let x = cx0; x <= cx1; x++) {
+        for (let y = cy0; y <= cy1; y++) {
+          const key = lev.z + '_' + x + '_' + y;
+          if (tiles.has(key)) continue;
+          const img = document.createElement('img');
+          img.decoding = 'async';
+          img.draggable = false;
+          img.src = 'tiles/' + lev.z + '/' + x + '_' + y + '.png';
+          const pw = Math.min(TILE, lev.w - x * TILE), ph = Math.min(TILE, lev.h - y * TILE);
+          img.style.left = (x * tw) + 'px';
+          img.style.top = (y * tw) + 'px';
+          img.style.width = (pw / lev.s) + 'px';
+          img.style.height = (ph / lev.s) + 'px';
+          world.appendChild(img);
+          tiles.set(key, img);
+        }
+      }
+    }
+
+    tiles.forEach(function (img, key) {
+      const parts = key.split('_');
+      const z = +parts[0], x = +parts[1], y = +parts[2];
+      let keep = false;
+      if (lev && z === lev.z) {
+        const tw = TILE / lev.s;
+        const left = x * tw, top = y * tw;
+        keep = left < x1 && left + tw > x0 && top < y1 && top + tw > y0;
+      }
+      if (!keep) { img.remove(); tiles.delete(key); }
+    });
+  }
+
   function apply() {
-    map.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    world.style.transform = 'translate(' + tx + 'px, ' + ty + 'px) scale(' + scale + ')';
+    clearTimeout(tileTimer);
+    tileTimer = setTimeout(updateTiles, 60);
   }
 
   function clamp() {
     scale = Math.min(Math.max(scale, fitScale), maxScale);
     const vw = viewport.clientWidth, vh = viewport.clientHeight;
-    const w = imgW * scale, h = imgH * scale;
+    const w = WORLD_W * scale, h = WORLD_H * scale;
     if (w <= vw) { tx = (vw - w) / 2; }
     else { tx = Math.min(0, Math.max(vw - w, tx)); }
     if (h <= vh) { ty = (vh - h) / 2; }
@@ -94,37 +166,33 @@
 
   function fitToScreen() {
     const vw = viewport.clientWidth, vh = viewport.clientHeight;
-    fitScale = Math.min(vw / imgW, vh / imgH);
-    maxScale = Math.max(fitScale * 12, 2);
+    fitScale = Math.min(vw / WORLD_W, vh / WORLD_H);
+    maxScale = Math.max(fitScale * 12, 1.2);
     scale = fitScale;
-    tx = (vw - imgW * scale) / 2;
-    ty = (vh - imgH * scale) / 2;
+    tx = (vw - WORLD_W * scale) / 2;
+    ty = (vh - WORLD_H * scale) / 2;
     apply();
   }
 
   function init() {
     if (viewport.clientWidth === 0 || viewport.clientHeight === 0) {
-      // Layout not ready yet (e.g. hidden/zero-size tab) — retry next frame.
       requestAnimationFrame(init);
       return;
     }
-    imgW = map.naturalWidth;
-    imgH = map.naturalHeight;
     loading.style.display = 'none';
     fitToScreen();
   }
-  if (map.complete && map.naturalWidth) { init(); }
-  else { map.addEventListener('load', init); }
-  map.addEventListener('error', function () {
-    loading.textContent = 'Could not load map image (map.png missing).';
+  if (base.complete && base.naturalWidth) { init(); }
+  else { base.addEventListener('load', init); }
+  base.addEventListener('error', function () {
+    loading.textContent = 'Could not load map (base.png missing).';
   });
 
   window.addEventListener('resize', function () {
-    if (!imgW) return;
     const wasAtFit = Math.abs(scale - fitScale) < 0.001;
     const vw = viewport.clientWidth, vh = viewport.clientHeight;
-    fitScale = Math.min(vw / imgW, vh / imgH);
-    maxScale = Math.max(fitScale * 12, 2);
+    fitScale = Math.min(vw / WORLD_W, vh / WORLD_H);
+    maxScale = Math.max(fitScale * 12, 1.2);
     if (wasAtFit) { fitToScreen(); } else { clamp(); apply(); }
   });
 
@@ -137,7 +205,6 @@
       const now = Date.now();
       const dx = e.clientX - lastTapX, dy = e.clientY - lastTapY;
       if (now - lastTapTime < 300 && dx * dx + dy * dy < 900) {
-        // double tap: toggle zoom
         const target = scale < fitScale * 2.5 ? fitScale * 3.5 : fitScale;
         zoomAbout(e.clientX, e.clientY, target);
         lastTapTime = 0;
@@ -158,7 +225,8 @@
       clamp();
       apply();
     } else if (pointers.size === 2) {
-      const ids = [...pointers.keys()];
+      const ids = [];
+      pointers.forEach(function (v, id) { ids.push(id); });
       const otherId = ids[0] === e.pointerId ? ids[1] : ids[0];
       const other = pointers.get(otherId);
 
