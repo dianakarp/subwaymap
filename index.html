@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>NYC Subway Map</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Subway Map">
+<meta name="theme-color" content="#0f0f10">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #0f0f10;
+    overscroll-behavior: none;
+  }
+  #viewport {
+    position: fixed;
+    inset: 0;
+    touch-action: none;
+    cursor: grab;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #viewport.dragging { cursor: grabbing; }
+  #map {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+    image-rendering: auto;
+    -webkit-user-drag: none;
+    pointer-events: none;
+  }
+  #loading {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9a9aa0;
+    font: 16px -apple-system, "Segoe UI", sans-serif;
+  }
+</style>
+</head>
+<body>
+<div id="loading">Loading map…</div>
+<div id="viewport">
+  <img id="map" src="map.png" alt="NYC Subway map" draggable="false">
+</div>
+<script>
+(function () {
+  const viewport = document.getElementById('viewport');
+  const map = document.getElementById('map');
+  const loading = document.getElementById('loading');
+
+  let scale = 1, tx = 0, ty = 0;
+  let fitScale = 1, maxScale = 4;
+  let imgW = 0, imgH = 0;
+
+  const pointers = new Map();
+  let lastTapTime = 0, lastTapX = 0, lastTapY = 0;
+
+  function apply() {
+    map.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+  }
+
+  function clamp() {
+    scale = Math.min(Math.max(scale, fitScale), maxScale);
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    const w = imgW * scale, h = imgH * scale;
+    if (w <= vw) { tx = (vw - w) / 2; }
+    else { tx = Math.min(0, Math.max(vw - w, tx)); }
+    if (h <= vh) { ty = (vh - h) / 2; }
+    else { ty = Math.min(0, Math.max(vh - h, ty)); }
+  }
+
+  function zoomAbout(mx, my, newScale) {
+    newScale = Math.min(Math.max(newScale, fitScale), maxScale);
+    const f = newScale / scale;
+    tx = mx - (mx - tx) * f;
+    ty = my - (my - ty) * f;
+    scale = newScale;
+    clamp();
+    apply();
+  }
+
+  function fitToScreen() {
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    fitScale = Math.min(vw / imgW, vh / imgH);
+    maxScale = Math.max(fitScale * 12, 2);
+    scale = fitScale;
+    tx = (vw - imgW * scale) / 2;
+    ty = (vh - imgH * scale) / 2;
+    apply();
+  }
+
+  function init() {
+    if (viewport.clientWidth === 0 || viewport.clientHeight === 0) {
+      // Layout not ready yet (e.g. hidden/zero-size tab) — retry next frame.
+      requestAnimationFrame(init);
+      return;
+    }
+    imgW = map.naturalWidth;
+    imgH = map.naturalHeight;
+    loading.style.display = 'none';
+    fitToScreen();
+  }
+  if (map.complete && map.naturalWidth) { init(); }
+  else { map.addEventListener('load', init); }
+  map.addEventListener('error', function () {
+    loading.textContent = 'Could not load map image (map.png missing).';
+  });
+
+  window.addEventListener('resize', function () {
+    if (!imgW) return;
+    const wasAtFit = Math.abs(scale - fitScale) < 0.001;
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    fitScale = Math.min(vw / imgW, vh / imgH);
+    maxScale = Math.max(fitScale * 12, 2);
+    if (wasAtFit) { fitToScreen(); } else { clamp(); apply(); }
+  });
+
+  viewport.addEventListener('pointerdown', function (e) {
+    try { viewport.setPointerCapture(e.pointerId); } catch (err) { /* pointer may already be gone */ }
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    viewport.classList.add('dragging');
+
+    if (pointers.size === 1) {
+      const now = Date.now();
+      const dx = e.clientX - lastTapX, dy = e.clientY - lastTapY;
+      if (now - lastTapTime < 300 && dx * dx + dy * dy < 900) {
+        // double tap: toggle zoom
+        const target = scale < fitScale * 2.5 ? fitScale * 3.5 : fitScale;
+        zoomAbout(e.clientX, e.clientY, target);
+        lastTapTime = 0;
+      } else {
+        lastTapTime = now; lastTapX = e.clientX; lastTapY = e.clientY;
+      }
+    }
+  });
+
+  viewport.addEventListener('pointermove', function (e) {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+
+    if (pointers.size === 1) {
+      tx += e.clientX - prev.x;
+      ty += e.clientY - prev.y;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      clamp();
+      apply();
+    } else if (pointers.size === 2) {
+      const ids = [...pointers.keys()];
+      const otherId = ids[0] === e.pointerId ? ids[1] : ids[0];
+      const other = pointers.get(otherId);
+
+      const prevMidX = (prev.x + other.x) / 2, prevMidY = (prev.y + other.y) / 2;
+      const prevDist = Math.hypot(prev.x - other.x, prev.y - other.y);
+
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const newMidX = (e.clientX + other.x) / 2, newMidY = (e.clientY + other.y) / 2;
+      const newDist = Math.hypot(e.clientX - other.x, e.clientY - other.y);
+      if (prevDist === 0) return;
+
+      const newScale = Math.min(Math.max(scale * (newDist / prevDist), fitScale), maxScale);
+      const f = newScale / scale;
+      tx = newMidX - (prevMidX - tx) * f;
+      ty = newMidY - (prevMidY - ty) * f;
+      scale = newScale;
+      clamp();
+      apply();
+    }
+  });
+
+  function releasePointer(e) {
+    pointers.delete(e.pointerId);
+    if (pointers.size === 0) viewport.classList.remove('dragging');
+  }
+  viewport.addEventListener('pointerup', releasePointer);
+  viewport.addEventListener('pointercancel', releasePointer);
+
+  viewport.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    const factor = Math.exp(-e.deltaY * 0.002);
+    zoomAbout(e.clientX, e.clientY, scale * factor);
+  }, { passive: false });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function (err) {
+      console.warn('Service worker registration failed:', err);
+    });
+  }
+})();
+</script>
+</body>
+</html>
