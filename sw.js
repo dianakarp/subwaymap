@@ -1,6 +1,6 @@
 // Bump this version string whenever any file changes (especially map.png)
 // so installed phones pick up the update next time they're online.
-const CACHE_NAME = 'subway-map-v4';
+const CACHE_NAME = 'subway-map-v5';
 
 const ASSETS = [
   './',
