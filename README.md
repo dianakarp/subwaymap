@@ -3,18 +3,19 @@
 A personal, ad-free, offline NYC subway map. One zoomable map, nothing else.
 
 - **Zoom/pan**: pinch, drag, double-tap. Scroll wheel on desktop.
-- **Offline**: a service worker caches everything on first load, so the map works underground with no signal.
+- **Day / late-night toggle**: the moon button (top right) switches to the official MTA Late Nights map (~11 PM–5 AM service). It keeps your position and remembers your choice.
+- **Offline**: a service worker caches everything on first load, so both maps work underground with no signal.
 - **Install on iPhone**: open the site in Safari → Share → Add to Home Screen.
 
 ## How the map is stored
 
-The map is tiled like a real map app, so phones never decode one giant image:
+The maps are tiled like a real map app, so phones never decode one giant image:
 
-- `base.png` — 2000px overview, always visible.
-- `tiles/1/` — the map at 4000px wide, cut into 1024px tiles (mid zoom).
-- `tiles/2/` — the map at 8000px wide, cut into 1024px tiles (deep zoom).
+- `base.png` / `base-night.png` — 2000px overviews, always visible.
+- `tiles/1/`, `tiles-night/1/` — each map at 4000px wide, cut into 1024px tiles (mid zoom).
+- `tiles/2/`, `tiles-night/2/` — each map at 8000px wide, cut into 1024px tiles (deep zoom).
 
-The page loads only the tiles visible at the current zoom.
+The page loads only the tiles visible at the current zoom, for the active map. Sources: `mta-subway-map.pdf` (day) and `mta-subway-map-night.pdf` (late nights).
 
 ## Updating the map
 
