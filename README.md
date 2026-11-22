@@ -4,7 +4,7 @@ A personal, ad-free, offline NYC subway map. One zoomable map, nothing else.
 
 **Open it:** https://dianakarp.github.io/subwaymap/
 
-<!-- map-version -->Current map: the MTA's subway diagram dated **June 25, 2026**.<!-- /map-version -->
+<!-- map-version -->Current map: the MTA's subway diagram dated **November 19, 2026**.<!-- /map-version -->
 
 - **Zoom/pan**: pinch, drag (with momentum), double-tap. One-handed: double-tap and hold, then slide down to zoom in or up to zoom out. Scroll wheel or +/− keys on desktop (0 shows the whole map).
 - **Day / late-night toggle**: the moon button (top right) switches to the official MTA Late Nights map (~11 PM–5 AM service). It keeps your position and remembers your choice.
