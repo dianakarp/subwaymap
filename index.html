@@ -77,6 +77,29 @@
     -webkit-tap-highlight-color: transparent;
   }
   #modeBtn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  #toast {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+    right: calc(env(safe-area-inset-right, 0px) + 68px);
+    height: 46px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-radius: 23px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(28, 28, 34, 0.82);
+    color: #fff;
+    font: 15px -apple-system, "Segoe UI", sans-serif;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateX(8px);
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 10;
+  }
+  #toast.show { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
 </style>
 </head>
 <body>
@@ -87,6 +110,7 @@
   </div>
 </div>
 <button id="modeBtn" type="button" aria-label="Show late-night map" title="Show late-night map">&#9790;</button>
+<div id="toast" role="status" aria-live="polite"></div>
 <script>
 (function () {
   'use strict';
@@ -336,21 +360,73 @@
   }
 
   // ---- Day / late-night map ----
+  // The late-night map shows from 11 PM to 5 AM New York time, the daytime map
+  // the rest of the day. Tapping the button picks one yourself until the
+  // schedule next switches the other way (late-night until 5 AM, daytime
+  // until 11 PM).
 
-  function setMode(next, remember) {
+  const PICK_KEY = 'subwaymap.pick';
+  const toastEl = document.getElementById('toast');
+  let nycClock = null;
+  try {
+    nycClock = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', hourCycle: 'h23'
+    });
+  } catch (err) { /* very old browser: use the phone's own clock */ }
+
+  // Where we are in the schedule: which map it calls for, and a name for this
+  // stretch of it, e.g. "night:2026-11-21" for 11 PM Nov 21 to 5 AM Nov 22.
+  function schedule() {
+    const now = new Date();
+    let y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate(), h = now.getHours();
+    if (nycClock) {
+      const p = {};
+      nycClock.formatToParts(now).forEach(function (part) { p[part.type] = part.value; });
+      y = +p.year; m = +p.month; d = +p.day; h = +p.hour % 24;
+    }
+    const night = h >= 23 || h < 5;
+    const start = new Date(Date.UTC(y, m - 1, h < 5 ? d - 1 : d));
+    return { mode: night ? 'night' : 'day', key: (night ? 'night:' : 'day:') + start.toISOString().slice(0, 10) };
+  }
+
+  function wantedMode() {
+    const now = schedule();
+    let pick = null;
+    try { pick = JSON.parse(load(PICK_KEY)); } catch (err) { /* ignore */ }
+    return pick && pick.key === now.key && MAPS[pick.mode] ? pick.mode : now.mode;
+  }
+
+  let toastTimer = 0;
+  function toast(text) {
+    toastEl.textContent = text;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2500);
+  }
+
+  function setMode(next, announce) {
     mode = next;
-    if (remember) store('mapMode', mode);
     modeBtn.textContent = MAPS[mode].icon;
     modeBtn.setAttribute('aria-label', MAPS[mode].label);
     modeBtn.title = MAPS[mode].label;
     base.src = MAPS[mode].base;
     scheduleTiles();
+    if (announce) toast(mode === 'night' ? 'Late-night map until 5 AM' : 'Daytime map until 11 PM');
   }
 
   modeBtn.addEventListener('click', function () {
     interacted = true;
-    setMode(mode === 'day' ? 'night' : 'day', true);
+    const next = mode === 'day' ? 'night' : 'day';
+    store(PICK_KEY, JSON.stringify({ mode: next, key: schedule().key }));
+    setMode(next, true);
   });
+
+  // Follow the schedule while the app is open, and when it's reopened.
+  function followSchedule() {
+    const next = wantedMode();
+    if (next !== mode) setMode(next, true);
+  }
+  setInterval(followSchedule, 30 * 1000);
 
   // ---- Start ----
 
@@ -368,7 +444,7 @@
   base.addEventListener('error', function () {
     if (!ready) loading.textContent = 'Couldn’t load the map. Check your connection and try again.';
   });
-  setMode(load('mapMode') === 'night' ? 'night' : 'day', false);
+  setMode(wantedMode(), false);
 
   window.addEventListener('resize', function () {
     if (!ready) return;
@@ -382,6 +458,7 @@
 
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') saveView();
+    else followSchedule();
   });
   window.addEventListener('pagehide', saveView);
 
@@ -557,7 +634,7 @@
         if (reloadOnReturn) { location.reload(); return; }
         // Home-screen apps often resume instead of relaunching, so check for a
         // new map now and then.
-        if (Date.now() - lastCheck > 60 * 60 * 1000) {
+        if (reg && Date.now() - lastCheck > 60 * 60 * 1000) {
           lastCheck = Date.now();
           reg.update().catch(function () { /* offline */ });
         }
