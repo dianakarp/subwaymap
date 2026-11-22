@@ -1,0 +1,65 @@
+name: Update subway map
+
+# Checks the MTA's official subway diagrams once a week. When the MTA has
+# published a new edition, this rebuilds the map images, commits them and
+# republishes the site. Run it by hand any time from the Actions tab.
+
+on:
+  schedule:
+    - cron: "23 13 * * 1"  # Mondays, 13:23 UTC (morning in New York)
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Rebuild the map images even if the MTA maps haven't changed"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write  # commit the new map
+  pages: write     # republish the site
+  actions: write   # keep this weekly schedule from being paused
+
+concurrency:
+  group: update-map
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install -r tools/requirements.txt
+
+      - name: Download the MTA maps and rebuild if they changed
+        run: python tools/build_map.py
+
+      - name: Commit and publish the new map
+        run: |
+          paths="mta-subway-map.pdf mta-subway-map-night.pdf base.png base-night.png tiles tiles-night sw.js index.html README.md"
+          if [ -z "$(git status --porcelain -- $paths)" ]; then
+            echo "The map is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- $paths
+          git commit -F "$RUNNER_TEMP/map-commit-message.txt"
+          git pull --rebase
+          git push
+          # Commits pushed by a workflow don't trigger a Pages build on their own.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/pages/builds"
+
+      - name: Keep the weekly check running
+        if: always()
+        # GitHub pauses scheduled workflows after 60 days without repository
+        # activity; re-enabling the workflow resets that clock.
+        run: gh api --method PUT "repos/$GITHUB_REPOSITORY/actions/workflows/update-map.yml/enable"
