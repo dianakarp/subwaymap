@@ -7,7 +7,7 @@ A personal, ad-free, offline NYC subway map. One zoomable map, nothing else.
 <!-- map-version -->Current map: the MTA's subway diagram dated **November 19, 2026**.<!-- /map-version -->
 
 - **Zoom/pan**: pinch, drag (with momentum), double-tap. One-handed: double-tap and hold, then slide down to zoom in or up to zoom out. Scroll wheel or +/− keys on desktop (0 shows the whole map).
-- **Day / late-night toggle**: the moon button (top right) switches to the official MTA Late Nights map (~11 PM–5 AM service). It keeps your position and remembers your choice.
+- **Day / late-night map**: from 11 PM to 5 AM (New York time) the app shows the official MTA Late Nights map, and the daytime map the rest of the day, switching on its own even while it's open. The moon/sun button (top right) picks one yourself until the next changeover: late-night until 5 AM, daytime until 11 PM. Switching keeps your position.
 - **Picks up where you left off**: reopening the app returns to the same spot and zoom.
 - **Offline**: a service worker caches everything on first load, so both maps work underground with no signal.
 - **Install on iPhone**: open the site in Safari → Share → Add to Home Screen.
