@@ -9,7 +9,7 @@
 //  - MAP_VERSION and MAP_SIZE are rewritten by tools/build_map.py whenever the
 //    MTA publishes a new map; don't edit them by hand.
 
-const SHELL_VERSION = 9;
+const SHELL_VERSION = 10;
 const MAP_VERSION = '2026-11-19-3e30716d'; // @map-version: written by tools/build_map.py
 const MAP_SIZE = {"w": 8000, "h": 9739, "levels": [{"z": 1, "w": 4000, "h": 4870}, {"z": 2, "w": 8000, "h": 9739}]}; // @map-size: written by tools/build_map.py
 
